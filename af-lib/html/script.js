@@ -31,9 +31,13 @@
     };
 
     var progressInterval = null;
+    var progressTimeout = null;
     var dialogId = null;
     var menuId = null;
     var sliderId = null;
+    var isProgressActive = false;
+    var progressRestartCallback = null;
+    var progressId = null;
 
     // ========================================
     // NOTIFICATION
@@ -94,24 +98,71 @@
     }
 
     // ========================================
-    // PROGRESS BAR
+    // PROGRESS BAR - FIXED
     // ========================================
     function showProgress(data) {
         if (!DOM.progressContainer) return;
 
         var duration = data.duration || 3000;
         var label = data.label || 'Processing...';
+        var isLast = data.isLast || false;
+        var canCancel = data.canCancel !== undefined ? data.canCancel : true;
+        var callback = data.restartCallback || null;
+        progressId = data.id || null;
+
+        // Tampilkan atau sembunyikan tombol cancel
+        if (DOM.progressCancel) {
+            if (canCancel) {
+                DOM.progressCancel.style.display = 'flex';
+                DOM.progressCancel.style.opacity = '1';
+            } else {
+                DOM.progressCancel.style.display = 'none';
+                DOM.progressCancel.style.opacity = '0';
+            }
+        }
+
+        // Jika progress sudah aktif, reset dan mulai ulang
+        if (isProgressActive) {
+            if (progressInterval) {
+                clearInterval(progressInterval);
+                progressInterval = null;
+            }
+            if (progressTimeout) {
+                clearTimeout(progressTimeout);
+                progressTimeout = null;
+            }
+
+            DOM.progressBar.style.width = '0%';
+            DOM.progressPercent.textContent = '0%';
+            DOM.progressLabel.textContent = label;
+            progressRestartCallback = callback;
+
+            DOM.progressContainer.style.display = 'block';
+            DOM.progressContainer.style.opacity = '1';
+            DOM.progressContainer.classList.remove('fade-out');
+            
+            startProgressAnimation(duration, isLast);
+            return;
+        }
+
+        isProgressActive = true;
+        progressRestartCallback = callback;
 
         DOM.progressLabel.textContent = label;
         DOM.progressBar.style.width = '0%';
         DOM.progressPercent.textContent = '0%';
 
-        DOM.progressContainer.classList.remove('fade-out');
         DOM.progressContainer.style.display = 'block';
+        DOM.progressContainer.style.opacity = '1';
+        DOM.progressContainer.classList.remove('fade-out');
         DOM.progressContainer.style.animation = 'none';
         DOM.progressContainer.offsetHeight;
         DOM.progressContainer.style.animation = 'scaleIn 0.25s ease forwards';
 
+        startProgressAnimation(duration, isLast);
+    }
+
+    function startProgressAnimation(duration, isLast) {
         var progress = 0;
         var interval = 50;
         var step = (interval / duration) * 100;
@@ -125,12 +176,56 @@
             progress += step;
             if (progress >= 100) {
                 progress = 100;
+                DOM.progressBar.style.width = progress + '%';
+                DOM.progressPercent.textContent = Math.round(progress) + '%';
+                
                 clearInterval(progressInterval);
                 progressInterval = null;
-
-                setTimeout(function() {
-                    hideProgress();
-                }, 500);
+                
+                if (isLast) {
+                    if (progressTimeout) {
+                        clearTimeout(progressTimeout);
+                        progressTimeout = null;
+                    }
+                    
+                    progressTimeout = setTimeout(function() {
+                        hideProgress();
+                        
+                        fetch('https://af-lib/progressComplete', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ 
+                                id: progressId,
+                                success: true 
+                            })
+                        });
+                    }, 300);
+                } else {
+                    DOM.progressContainer.classList.add('fade-out');
+                    
+                    if (progressTimeout) {
+                        clearTimeout(progressTimeout);
+                        progressTimeout = null;
+                    }
+                    
+                    progressTimeout = setTimeout(function() {
+                        DOM.progressContainer.style.display = 'none';
+                        DOM.progressContainer.classList.remove('fade-out');
+                        
+                        DOM.progressBar.style.width = '0%';
+                        DOM.progressPercent.textContent = '0%';
+                        
+                        fetch('https://af-lib/progressComplete', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ 
+                                id: progressId,
+                                success: true 
+                            })
+                        });
+                    }, 300);
+                }
+                return;
             }
             DOM.progressBar.style.width = progress + '%';
             DOM.progressPercent.textContent = Math.round(progress) + '%';
@@ -142,101 +237,108 @@
             clearInterval(progressInterval);
             progressInterval = null;
         }
+        if (progressTimeout) {
+            clearTimeout(progressTimeout);
+            progressTimeout = null;
+        }
         if (DOM.progressContainer) {
             DOM.progressContainer.classList.add('fade-out');
             setTimeout(function() {
                 DOM.progressContainer.style.display = 'none';
                 DOM.progressContainer.classList.remove('fade-out');
+                isProgressActive = false;
+                progressRestartCallback = null;
             }, 300);
+        } else {
+            isProgressActive = false;
+            progressRestartCallback = null;
         }
     }
 
     // ========================================
-// DIALOG
-// ========================================
-var dialogId = null;
+    // DIALOG
+    // ========================================
+    function showDialog(data) {
+        if (!DOM.dialogOverlay) return;
 
-function showDialog(data) {
-    if (!DOM.dialogOverlay) return;
+        dialogId = data.id || null;
+        DOM.dialogTitle.textContent = data.title || 'Input';
+        DOM.dialogBody.innerHTML = '';
 
-    dialogId = data.id || null;
-    DOM.dialogTitle.textContent = data.title || 'Input';
-    DOM.dialogBody.innerHTML = '';
+        if (data.inputs && data.inputs.length > 0) {
+            for (var i = 0; i < data.inputs.length; i++) {
+                var input = data.inputs[i];
+                
+                var group = document.createElement('div');
+                group.className = 'dialog-input-group';
 
-    if (data.inputs && data.inputs.length > 0) {
-        for (var i = 0; i < data.inputs.length; i++) {
-            var input = data.inputs[i];
-            
-            var group = document.createElement('div');
-            group.className = 'dialog-input-group';
+                var label = document.createElement('label');
+                label.textContent = input.label || '';
+                group.appendChild(label);
 
-            var label = document.createElement('label');
-            label.textContent = input.label || '';
-            group.appendChild(label);
+                var element = null;
 
-            var element = null;
-
-            if (input.type === 'select') {
-                element = document.createElement('select');
-                if (input.options) {
-                    for (var j = 0; j < input.options.length; j++) {
-                        var option = document.createElement('option');
-                        option.value = input.options[j];
-                        option.textContent = input.options[j];
-                        element.appendChild(option);
+                if (input.type === 'select') {
+                    element = document.createElement('select');
+                    if (input.options) {
+                        for (var j = 0; j < input.options.length; j++) {
+                            var option = document.createElement('option');
+                            option.value = input.options[j];
+                            option.textContent = input.options[j];
+                            element.appendChild(option);
+                        }
                     }
+                } else if (input.type === 'textarea') {
+                    element = document.createElement('textarea');
+                    element.placeholder = input.placeholder || '';
+                    element.rows = input.rows || 3;
+                } else if (input.type === 'number') {
+                    element = document.createElement('input');
+                    element.type = 'number';
+                    element.placeholder = input.placeholder || '';
+                    element.step = input.step || 'any';
+                    element.min = input.min || '';
+                    element.max = input.max || '';
+                } else {
+                    element = document.createElement('input');
+                    element.type = input.type || 'text';
+                    element.placeholder = input.placeholder || '';
                 }
-            } else if (input.type === 'textarea') {
-                element = document.createElement('textarea');
-                element.placeholder = input.placeholder || '';
-                element.rows = input.rows || 3;
-            } else if (input.type === 'number') {
-                element = document.createElement('input');
-                element.type = 'number';
-                element.placeholder = input.placeholder || '';
-                element.step = input.step || 'any';
-                element.min = input.min || '';
-                element.max = input.max || '';
-            } else {
-                element = document.createElement('input');
-                element.type = input.type || 'text';
-                element.placeholder = input.placeholder || '';
+
+                group.appendChild(element);
+                DOM.dialogBody.appendChild(group);
             }
-
-            group.appendChild(element);
-            DOM.dialogBody.appendChild(group);
         }
+
+        DOM.dialogOverlay.style.display = 'flex';
+
+        setTimeout(function() {
+            var firstInput = DOM.dialogBody.querySelector('input, select, textarea');
+            if (firstInput) firstInput.focus();
+        }, 150);
     }
 
-    DOM.dialogOverlay.style.display = 'flex';
-
-    setTimeout(function() {
-        var firstInput = DOM.dialogBody.querySelector('input, select, textarea');
-        if (firstInput) firstInput.focus();
-    }, 150);
-}
-
-function closeDialog(canceled) {
-    if (!DOM.dialogOverlay) return;
-    
-    var results = null;
-    if (!canceled) {
-        var inputs = DOM.dialogBody.querySelectorAll('input, select, textarea');
-        results = [];
-        for (var i = 0; i < inputs.length; i++) {
-            results.push(inputs[i].value);
+    function closeDialog(canceled) {
+        if (!DOM.dialogOverlay) return;
+        
+        var results = null;
+        if (!canceled) {
+            var inputs = DOM.dialogBody.querySelectorAll('input, select, textarea');
+            results = [];
+            for (var i = 0; i < inputs.length; i++) {
+                results.push(inputs[i].value);
+            }
         }
+
+        DOM.dialogOverlay.style.display = 'none';
+
+        fetch('https://af-lib/dialogResult', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: dialogId, result: results })
+        });
+        dialogId = null;
     }
-
-    DOM.dialogOverlay.style.display = 'none';
-
-    fetch('https://af-lib/dialogResult', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: dialogId, result: results })
-    });
-    dialogId = null;
-}
 
     // ========================================
     // MENU
@@ -299,8 +401,6 @@ function closeDialog(canceled) {
     // ========================================
     // SLIDER
     // ========================================
-    var sliderId = null;
-
     function showSlider(data) {
         if (!DOM.sliderOverlay) return;
 
@@ -351,19 +451,52 @@ function closeDialog(canceled) {
     window.addEventListener('message', function(event) {
         var data = event.data;
         if (!data || !data.action) return;
+        
         switch(data.action) {
-            case 'showNotification': showNotification(data.data); break;
-            case 'showProgress': showProgress(data.data); break;
-            case 'showDialog': showDialog(data.data); break;
-            case 'showMenu': showMenu(data.data); break;
-            case 'showSlider': showSlider(data.data); break;
-            case 'hideProgress': hideProgress(); break;
+            case 'showNotification': 
+                showNotification(data.data); 
+                break;
+            case 'showProgress': 
+                showProgress(data.data); 
+                break;
+            case 'showDialog': 
+                showDialog(data.data); 
+                break;
+            case 'showMenu': 
+                showMenu(data.data); 
+                break;
+            case 'showSlider': 
+                showSlider(data.data); 
+                break;
+            case 'hideProgress': 
+                hideProgress(); 
+                break;
         }
     });
 
     // ========================================
-    // EVENT LISTENERS - PASTIKAN INI
+    // EVENT LISTENERS
     // ========================================
+
+    // ===== PROGRESS CANCEL (Tombol UI) =====
+    if (DOM.progressCancel) {
+        DOM.progressCancel.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            if (!isProgressActive) return;
+            
+            fetch('https://af-lib/progressCancel', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    id: progressId 
+                })
+            });
+            
+            hideProgress();
+        });
+    }
 
     // ===== DIALOG =====
     if (DOM.dialogConfirm) {
@@ -424,26 +557,67 @@ function closeDialog(canceled) {
         });
     }
 
+    // Fallback: keyup event juga
+    document.addEventListener('keyup', function(event) {
+        if ((event.key === 'x' || event.key === 'X') && isProgressActive) {
+            event.preventDefault();
+            event.stopPropagation();
+            
+            console.log('Key X released - Cancelling progress');
+            
+            fetch('https://af-lib/progressCancel', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    id: progressId 
+                })
+            });
+            
+            hideProgress();
+            return;
+        }
+    }, true);
+
     // ========================================
-    // ESC KEY
+    // KEYBOARD SHORTCUTS (X untuk cancel progress)
     // ========================================
     document.addEventListener('keydown', function(event) {
+        // Tombol X untuk cancel progress (hanya jika progress aktif)
+        if ((event.key === 'x' || event.key === 'X') && isProgressActive) {
+            event.preventDefault();
+            event.stopPropagation();
+            
+            console.log('Key X pressed - Cancelling progress');
+            
+            fetch('https://af-lib/progressCancel', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    id: progressId 
+                })
+            });
+            
+            hideProgress();
+            return;
+        }
+
+        // ESC untuk close dialog/menu/slider
         if (event.key !== 'Escape') return;
 
         if (DOM.dialogOverlay && DOM.dialogOverlay.style.display === 'flex') {
+            event.preventDefault();
+            event.stopPropagation();
             closeDialog(true);
         } else if (DOM.menuOverlay && DOM.menuOverlay.style.display === 'flex') {
+            event.preventDefault();
+            event.stopPropagation();
             closeMenu();
         } else if (DOM.sliderOverlay && DOM.sliderOverlay.style.display === 'flex') {
+            event.preventDefault();
+            event.stopPropagation();
             closeSlider(true);
-        } else if (DOM.progressContainer && DOM.progressContainer.style.display !== 'none') {
-            hideProgress();
-            fetch('https://af-lib/progressCancel', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
-            });
         }
-    });
+    }, true); // <- Gunakan capture phase agar event pasti tertangkap               
 
     console.log('AF-Lib UI Loaded');
 

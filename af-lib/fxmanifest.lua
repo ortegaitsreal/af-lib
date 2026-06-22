@@ -1,10 +1,6 @@
 fx_version 'cerulean'
 game 'gta5'
 
-author 'Your Name'
-description 'AF Library - Custom UI Components'
-version '1.0.0'
-
 ui_page 'html/index.html'
 
 files {
@@ -13,14 +9,25 @@ files {
     'html/script.js'
 }
 
+shared_scripts {
+    'config.lua'
+}
+
 client_scripts {
-    'config.lua',
     'client/main.lua'
 }
 
 server_scripts {
-    'config.lua',
     'server/main.lua'
+}
+
+-- ✅ EXPORTS
+exports {
+    'notify',
+    'progress',
+    'dialog',
+    'menu',
+    'slider'
 }
 
 dependencies {

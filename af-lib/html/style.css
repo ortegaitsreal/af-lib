@@ -297,7 +297,7 @@ body {
 }
 
 .progress-wrapper {
-    position: relative;
+    position: relative; /* ← PASTIKAN INI ADA */
     width: 380px;
     background: rgba(18, 5, 5, 0.65);
     border: 1px solid rgba(255, 255, 255, 0.08);
@@ -370,6 +370,37 @@ body {
 
 .progress-container.fade-out {
     animation: scaleOut 0.25s ease forwards !important;
+}
+
+/* ===== PROGRESS CANCEL BUTTON ===== */
+.progress-cancel {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: rgba(255, 68, 68, 0.08);
+    border: 1px solid rgba(255, 68, 68, 0.1);
+    color: rgba(255, 255, 255, 0.3);
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    z-index: 10;
+}
+
+.progress-cancel:hover {
+    background: rgba(255, 68, 68, 0.2);
+    border-color: rgba(255, 68, 68, 0.3);
+    color: #ff4444;
+    transform: rotate(90deg) scale(1.1);
+}
+
+.progress-cancel:active {
+    transform: scale(0.9);
 }
 
 /* ============================================
